@@ -142,12 +142,15 @@ mypy src/axiom              # type check
 The suite covers metric correctness against closed-form formulas, cost/slippage
 direction, no-look-ahead invariants, and walk-forward fold construction.
 
-## Case study (work in progress)
+## Case study
 
-The `examples/` directory will grow a written-up evaluation of a real strategy,
-including the honest part: **where it breaks** — regime dependence, sensitivity
-to cost assumptions, and the in-sample/out-of-sample degradation. That writeup
-is the point of the project.
+[**docs/CASE_STUDY.md**](docs/CASE_STUDY.md) walks a full evaluation of the SMA
+crossover end to end — costs → walk-forward → bootstrap significance — and reads
+the result honestly, including the **where it breaks** part: most OOS folds
+never trade, the active folds disagree (mean OOS Sharpe −0.37, std 2.05), and
+the Sharpe 95% CI [−1.53, 0.28] crosses zero, so there is no statistically real
+edge. It uses synthetic data as a methodology template; the same three checks
+apply unchanged once you plug in a real strategy and dataset.
 
 ## Roadmap
 
@@ -155,7 +158,7 @@ is the point of the project.
 - [x] Volume/volatility-aware slippage model
 - [ ] Multi-asset portfolio with correlation-aware sizing
 - [x] Borrow costs and financing for shorts
-- [ ] Strategy case-study writeup with real data
+- [x] Strategy case-study writeup ([docs/CASE_STUDY.md](docs/CASE_STUDY.md); synthetic demo — real-data version pending)
 - [x] Bootstrapped/Monte-Carlo confidence intervals on Sharpe
 
 ## License
