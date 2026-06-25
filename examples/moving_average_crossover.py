@@ -20,9 +20,9 @@ from axiom import (
     HistoricCSVDataHandler,
     MovingAverageCrossover,
     NextBarExecutionHandler,
-    PercentageSlippage,
     PerShareCommission,
     Portfolio,
+    VolumeShareSlippage,
     analyze,
     walk_forward,
 )
@@ -37,17 +37,22 @@ def synthetic_prices(n: int = 1500, seed: int = 7) -> dict:
     close = 100 * np.exp(np.cumsum(rets))
     # Next bar's open gaps slightly from the prior close (overnight move).
     open_ = np.concatenate([[close[0]], close[:-1] * (1 + rng.normal(0, 0.002, n - 1))])
-    return {"SYN": pd.DataFrame({"open": open_, "close": close}, index=idx)}
+    volume = rng.lognormal(mean=13.8, sigma=0.4, size=n)  # ~1M shares/bar
+    return {
+        "SYN": pd.DataFrame(
+            {"open": open_, "close": close, "volume": volume}, index=idx
+        )
+    }
 
 
 def single_backtest(frames: dict) -> None:
     data = HistoricCSVDataHandler(frames)
     strategy = MovingAverageCrossover(data, fast=20, slow=50)
     portfolio = Portfolio(data, initial_capital=100_000.0, risk_fraction=0.5)
-    # Realistic timing: a signal on bar t fills at bar t+1's open, not t's close.
+    # Realistic timing (next-bar open) + size-aware square-root market impact.
     execution = NextBarExecutionHandler(
         data,
-        slippage=PercentageSlippage(0.0005),
+        slippage=VolumeShareSlippage(base_rate=0.0002, impact_coef=0.1),
         commission=PerShareCommission(0.005, 1.0),
     )
     BacktestEngine(data, strategy, portfolio, execution).run()

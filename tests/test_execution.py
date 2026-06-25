@@ -11,6 +11,8 @@ from axiom import (
     PercentageSlippage,
     PerShareCommission,
     SimulatedExecutionHandler,
+    VolatilitySlippage,
+    VolumeShareSlippage,
 )
 
 
@@ -60,6 +62,39 @@ def test_next_bar_falls_back_to_close_without_open_column():
     data.update_bars()
     fills = handler.on_bar(None)
     assert fills[0].fill_price == pytest.approx(120.0)  # next bar's close
+
+
+def _bar(**fields):
+    return pd.Series(fields)
+
+
+def test_volume_impact_scales_with_order_size():
+    model = VolumeShareSlippage(base_rate=0.0, impact_coef=0.1)
+    small = model.fill_price(100.0, Direction.LONG, 100, _bar(volume=10_000))
+    large = model.fill_price(100.0, Direction.LONG, 400, _bar(volume=10_000))
+    # participation 0.01 -> 0.04; sqrt scaling -> frac 0.01 -> 0.02
+    assert small == pytest.approx(101.0)
+    assert large == pytest.approx(102.0)
+    assert large > small  # bigger order pays disproportionately more
+
+
+def test_volume_impact_falls_back_without_volume():
+    model = VolumeShareSlippage(base_rate=0.001, impact_coef=0.1)
+    price = model.fill_price(100.0, Direction.LONG, 999, _bar(close=100.0))
+    assert price == pytest.approx(100.0 * 1.001)  # base_rate only
+
+
+def test_volume_impact_rejects_negative_params():
+    with pytest.raises(ValueError):
+        VolumeShareSlippage(base_rate=-0.1)
+
+
+def test_volatility_slippage_scales_with_vol_column():
+    model = VolatilitySlippage(k=0.5, floor=0.0)
+    quiet = model.fill_price(100.0, Direction.SHORT, 10, _bar(volatility=0.01))
+    wild = model.fill_price(100.0, Direction.SHORT, 10, _bar(volatility=0.05))
+    assert quiet == pytest.approx(100.0 * (1 - 0.005))
+    assert wild < quiet  # short fills worse (lower) in the turbulent regime
 
 
 def test_long_slippage_pays_up():

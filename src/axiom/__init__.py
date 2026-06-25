@@ -29,6 +29,8 @@ from .execution import (
     PerShareCommission,
     SimulatedExecutionHandler,
     SlippageModel,
+    VolatilitySlippage,
+    VolumeShareSlippage,
 )
 from .metrics import PerformanceReport, analyze, max_drawdown, sharpe_ratio, sortino_ratio
 from .portfolio import Portfolio
@@ -55,6 +57,8 @@ __all__ = [
     "PerShareCommission",
     "SimulatedExecutionHandler",
     "SlippageModel",
+    "VolatilitySlippage",
+    "VolumeShareSlippage",
     "PerformanceReport",
     "analyze",
     "max_drawdown",
