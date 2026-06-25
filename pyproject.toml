@@ -53,3 +53,10 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.10"
 ignore_missing_imports = true
 files = ["src/axiom"]
+
+# numpy/pandas ship PEP 695 `type` statements in their stubs that don't parse
+# under an older target; we don't type-check third-party internals anyway.
+[[tool.mypy.overrides]]
+module = ["numpy.*", "pandas.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
