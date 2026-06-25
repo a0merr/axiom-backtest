@@ -19,7 +19,7 @@ from collections import deque
 
 from .data import DataHandler
 from .event import Event, EventType, FillEvent, MarketEvent, OrderEvent, SignalEvent
-from .execution import SimulatedExecutionHandler
+from .execution import ExecutionHandler
 from .portfolio import Portfolio
 from .strategy import Strategy
 
@@ -30,7 +30,7 @@ class BacktestEngine:
         data: DataHandler,
         strategy: Strategy,
         portfolio: Portfolio,
-        execution: SimulatedExecutionHandler,
+        execution: ExecutionHandler,
     ):
         self.data = data
         self.strategy = strategy
@@ -43,6 +43,10 @@ class BacktestEngine:
             market = self.data.update_bars()
             if market is None:
                 break
+            # Fill orders queued on the previous bar at this bar's price before
+            # the strategy reacts (no-look-ahead for deferred execution).
+            for fill in self.execution.on_bar(market):
+                self.portfolio.on_fill(fill)
             self._events.append(market)
             self._drain()
             # Mark to market once the bar's events are fully processed.
