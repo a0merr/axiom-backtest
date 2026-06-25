@@ -119,12 +119,18 @@ src/axiom/
   event.py        # typed events: Market/Signal/Order/Fill
   data.py         # DataHandler: streams bars, no look-ahead
   strategy.py     # Strategy base + MovingAverageCrossover reference
-  portfolio.py    # sizing, order generation, equity tracking
+  portfolio.py    # order generation, cash/positions, equity, borrow costs
+  sizing.py       # Sizer: fixed / vol-target / correlation-aware
   execution.py    # slippage + commission models -> fills
   engine.py       # the event loop
-  metrics.py      # Sharpe, Sortino, drawdown, Calmar, hit rate
+  metrics.py      # Sharpe/Sortino/drawdown/Calmar + bootstrap significance
   validation.py   # walk-forward / OOS analysis
 ```
+
+Position sizing is pluggable via `Portfolio(sizer=...)`:
+`FixedFractionalSizer` (default), `VolatilityTargetSizer` (size to a target
+annualized vol), and `CorrelationAwareSizer` (vol targeting plus a
+diversification haircut against correlated holdings).
 
 Each component is an abstract base with a reference implementation, so swapping
 in a live data feed, a real broker, or a new sizing rule is a subclass — not a
@@ -156,7 +162,7 @@ apply unchanged once you plug in a real strategy and dataset.
 
 - [x] Next-bar-open execution handler (remove current-close optimism)
 - [x] Volume/volatility-aware slippage model
-- [ ] Multi-asset portfolio with correlation-aware sizing
+- [x] Multi-asset portfolio with correlation-aware sizing
 - [x] Borrow costs and financing for shorts
 - [x] Strategy case-study writeup ([docs/CASE_STUDY.md](docs/CASE_STUDY.md); synthetic demo — real-data version pending)
 - [x] Bootstrapped/Monte-Carlo confidence intervals on Sharpe

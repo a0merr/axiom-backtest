@@ -42,6 +42,12 @@ from .metrics import (
     sortino_ratio,
 )
 from .portfolio import Portfolio
+from .sizing import (
+    CorrelationAwareSizer,
+    FixedFractionalSizer,
+    Sizer,
+    VolatilityTargetSizer,
+)
 from .strategy import MovingAverageCrossover, Strategy
 from .validation import WalkForwardWindow, stitch_oos_equity, walk_forward
 
@@ -75,6 +81,10 @@ __all__ = [
     "sharpe_ratio",
     "sortino_ratio",
     "Portfolio",
+    "CorrelationAwareSizer",
+    "FixedFractionalSizer",
+    "Sizer",
+    "VolatilityTargetSizer",
     "MovingAverageCrossover",
     "Strategy",
     "WalkForwardWindow",
