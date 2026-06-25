@@ -13,6 +13,7 @@ import pandas as pd
 
 from .data import DataHandler
 from .event import Direction, FillEvent, MarketEvent, OrderEvent, SignalEvent
+from .sizing import FixedFractionalSizer, Sizer
 
 
 @dataclass
@@ -35,6 +36,7 @@ class Portfolio:
     risk_fraction: float = 0.1
     annual_borrow_rate: float = 0.0  # financing on short notional, e.g. 0.03 = 3%/yr
     periods_per_year: int = 252
+    sizer: Sizer | None = None  # defaults to FixedFractionalSizer(risk_fraction)
 
     cash: float = field(init=False)
     positions: dict[str, _Position] = field(init=False)
@@ -47,6 +49,8 @@ class Portfolio:
         self.cash = self.initial_capital
         self.positions = {s: _Position() for s in self.data.symbols}
         self.equity_curve = []
+        if self.sizer is None:
+            self.sizer = FixedFractionalSizer(self.risk_fraction)
 
     # -- signal -> order ---------------------------------------------------
     def on_signal(self, signal: SignalEvent) -> list[OrderEvent]:
@@ -63,23 +67,24 @@ class Portfolio:
 
         if signal.direction == Direction.LONG and pos.quantity <= 0:
             # Cover any existing short, then open the new long in one order.
-            qty = self._size(price, signal.strength) + abs(pos.quantity)
+            qty = self._size(signal.symbol, price, signal.strength) + abs(pos.quantity)
             if qty <= 0:
                 return []
             return [OrderEvent(signal.symbol, signal.timestamp, Direction.LONG, qty)]
 
         if signal.direction == Direction.SHORT and pos.quantity >= 0:
             # Sell out any existing long, then open the new short in one order.
-            qty = self._size(price, signal.strength) + abs(pos.quantity)
+            qty = self._size(signal.symbol, price, signal.strength) + abs(pos.quantity)
             if qty <= 0:
                 return []
             return [OrderEvent(signal.symbol, signal.timestamp, Direction.SHORT, qty)]
 
         return []
 
-    def _size(self, price: float, strength: float) -> float:
-        budget = self.equity() * self.risk_fraction * max(0.0, min(strength, 1.0))
-        return float(int(budget // price))
+    def _size(self, symbol: str, price: float, strength: float) -> float:
+        assert self.sizer is not None  # set in __post_init__
+        held = [s for s, p in self.positions.items() if p.quantity != 0]
+        return self.sizer.size(symbol, price, strength, self.equity(), held)
 
     # -- fill -> books -----------------------------------------------------
     def on_fill(self, fill: FillEvent) -> None:
@@ -110,6 +115,8 @@ class Portfolio:
 
     # -- mark to market ----------------------------------------------------
     def on_market(self, event: MarketEvent) -> None:
+        if self.sizer is not None:
+            self.sizer.observe(self.data)
         self._accrue_borrow()
         self.equity_curve.append(
             {"timestamp": event.timestamp, "equity": self.equity()}
