@@ -1,5 +1,9 @@
 # axiom-backtest
 
+[![ci](https://github.com/a0merr/axiom-backtest/actions/workflows/ci.yml/badge.svg)](https://github.com/a0merr/axiom-backtest/actions/workflows/ci.yml)
+[![python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![license: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 An event-driven backtesting framework for systematic trading strategies — built
 to answer one question honestly: **would this strategy have survived out of
 sample, after costs?**
@@ -35,7 +39,8 @@ swapping two components, not rewriting the strategy.
 | --- | --- |
 | **Transaction costs** | Per-share commission with a per-order minimum (`PerShareCommission`). |
 | **Slippage** | Price moves against you on every fill (`PercentageSlippage`); pluggable for volume/vol-aware models. |
-| **Look-ahead bias** | Data handler exposes only `asof`-resolved bars; signals on bar *t* fill at bar *t*'s price. |
+| **Look-ahead bias** | Data handler exposes only `asof`-resolved bars. `NextBarExecutionHandler` fills a signal from bar *t* at bar *t+1*'s open — you can't trade on a price you used to decide. |
+| **Execution timing** | Two models: `SimulatedExecutionHandler` (same-bar close, simple) and `NextBarExecutionHandler` (next-bar open, realistic). |
 | **Out-of-sample validation** | Rolling-origin `walk_forward` reports performance on concatenated OOS windows only. |
 | **Risk metrics** | Sharpe, Sortino, max drawdown, Calmar, CAGR, hit rate — annualized with an explicit risk-free rate. |
 
@@ -144,7 +149,7 @@ is the point of the project.
 
 ## Roadmap
 
-- [ ] Next-bar-open execution handler (remove current-close optimism)
+- [x] Next-bar-open execution handler (remove current-close optimism)
 - [ ] Volume/volatility-aware slippage model
 - [ ] Multi-asset portfolio with correlation-aware sizing
 - [ ] Borrow costs and financing for shorts

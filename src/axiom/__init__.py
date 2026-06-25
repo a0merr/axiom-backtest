@@ -23,6 +23,8 @@ from .event import (
 )
 from .execution import (
     CommissionModel,
+    ExecutionHandler,
+    NextBarExecutionHandler,
     PercentageSlippage,
     PerShareCommission,
     SimulatedExecutionHandler,
@@ -47,6 +49,8 @@ __all__ = [
     "OrderEvent",
     "SignalEvent",
     "CommissionModel",
+    "ExecutionHandler",
+    "NextBarExecutionHandler",
     "PercentageSlippage",
     "PerShareCommission",
     "SimulatedExecutionHandler",

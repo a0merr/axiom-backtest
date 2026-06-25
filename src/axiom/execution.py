@@ -59,13 +59,16 @@ class PerShareCommission(CommissionModel):
         return max(self.minimum, abs(quantity) * self.per_share)
 
 
-class SimulatedExecutionHandler:
-    """Fill market orders at the next available price plus frictions.
+class ExecutionHandler(ABC):
+    """Turn orders into fills.
 
-    The reference price is the latest close. In a daily backtest, orders
-    generated on bar *t* should be assumed to fill on bar *t* (close) or *t+1*
-    (open); we use the current close and let slippage absorb the optimism. For
-    intraday work, swap in a handler that reads the next bar's open.
+    Two timing hooks let the engine support both same-bar and next-bar fills
+    without knowing which model is in use:
+
+    * ``execute_order`` is called when an ORDER event is processed.
+    * ``on_bar`` is called at the start of every bar, before strategy logic, so
+      a deferred handler can fill orders queued on the previous bar using the
+      new bar's price.
     """
 
     def __init__(
@@ -78,12 +81,18 @@ class SimulatedExecutionHandler:
         self.slippage = slippage or PercentageSlippage()
         self.commission_model = commission or PerShareCommission()
 
+    @abstractmethod
     def execute_order(self, order: OrderEvent) -> FillEvent | None:
-        ref = self.data.latest_price(order.symbol)
-        if ref is None:
-            return None
-        fill_price = self.slippage.fill_price(ref, order.direction)
-        slippage_cost = abs(fill_price - ref) * order.quantity
+        ...
+
+    def on_bar(self, event) -> list[FillEvent]:  # noqa: ANN001 - MarketEvent
+        return []
+
+    def _build_fill(
+        self, order: OrderEvent, reference_price: float
+    ) -> FillEvent:
+        fill_price = self.slippage.fill_price(reference_price, order.direction)
+        slippage_cost = abs(fill_price - reference_price) * order.quantity
         commission = self.commission_model.commission(order.quantity, fill_price)
         return FillEvent(
             symbol=order.symbol,
@@ -94,3 +103,64 @@ class SimulatedExecutionHandler:
             commission=commission,
             slippage=slippage_cost,
         )
+
+    def _reference_price(self, symbol: str, field: str) -> float | None:
+        """Latest value of ``field``, falling back to close if absent."""
+        bar = self.data.latest_bar(symbol)
+        if bar is None:
+            return None
+        if field in bar.index:
+            return float(bar[field])
+        return self.data.latest_price(symbol)  # close fallback
+
+
+class SimulatedExecutionHandler(ExecutionHandler):
+    """Fill at the current bar's close, plus frictions.
+
+    Simple and conservative-ish once slippage is applied, but optimistic: a
+    signal computed from a bar's close cannot in reality be traded at that same
+    close. Use ``NextBarExecutionHandler`` to remove that look-ahead.
+    """
+
+    def execute_order(self, order: OrderEvent) -> FillEvent | None:
+        ref = self.data.latest_price(order.symbol)
+        if ref is None:
+            return None
+        return self._build_fill(order, ref)
+
+
+class NextBarExecutionHandler(ExecutionHandler):
+    """Fill at the *next* bar's open — the realistic, no-look-ahead model.
+
+    Orders are queued when received and filled on the following bar using its
+    open price (falling back to close if the data has no ``open`` column). The
+    consequence is honest: a signal on bar *t* cannot be acted on until bar
+    *t+1*, and an order generated on the final bar never fills (there is no next
+    bar to trade into).
+    """
+
+    def __init__(
+        self,
+        data: DataHandler,
+        slippage: SlippageModel | None = None,
+        commission: CommissionModel | None = None,
+        price_field: str = "open",
+    ):
+        super().__init__(data, slippage, commission)
+        self.price_field = price_field
+        self._pending: list[OrderEvent] = []
+
+    def execute_order(self, order: OrderEvent) -> FillEvent | None:
+        self._pending.append(order)
+        return None  # filled later, in on_bar
+
+    def on_bar(self, event) -> list[FillEvent]:  # noqa: ANN001 - MarketEvent
+        if not self._pending:
+            return []
+        fills: list[FillEvent] = []
+        for order in self._pending:
+            ref = self._reference_price(order.symbol, self.price_field)
+            if ref is not None:
+                fills.append(self._build_fill(order, ref))
+        self._pending.clear()
+        return fills
