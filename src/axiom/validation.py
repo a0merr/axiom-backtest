@@ -35,6 +35,7 @@ class WalkForwardWindow:
     test_end: pd.Timestamp
     params: dict
     report: PerformanceReport
+    equity: pd.Series  # out-of-sample equity curve for this fold
 
 
 def _slice(frames: dict[str, pd.DataFrame], start, end) -> dict[str, pd.DataFrame]:
@@ -80,21 +81,24 @@ def walk_forward(
             break
 
         train_frames = _slice(frames, timeline[train_lo], timeline[train_hi - 1])
-        test_frames = _slice(frames, timeline[train_hi], timeline[test_hi - 1])
 
         params = dict(base_params)
         if optimizer is not None:
             params.update(optimizer(train_frames))
 
-        data = HistoricCSVDataHandler(test_frames)
+        # Warm the strategy on the in-sample window so it enters the OOS block
+        # with full state — a 50-bar moving average needs 50 prior bars before
+        # it can signal at all. Trade through train+test, then keep only the
+        # equity from the OOS start so reported performance is genuinely OOS.
+        run_frames = _slice(frames, timeline[train_lo], timeline[test_hi - 1])
+        data = HistoricCSVDataHandler(run_frames)
         strategy = strategy_factory(data, params)
         portfolio = Portfolio(data, initial_capital=initial_capital)
         execution = SimulatedExecutionHandler(data)
         BacktestEngine(data, strategy, portfolio, execution).run()
 
-        report = analyze(
-            portfolio.equity_series(), periods_per_year=periods_per_year
-        )
+        oos_equity = portfolio.equity_series().loc[timeline[train_hi]:]
+        report = analyze(oos_equity, periods_per_year=periods_per_year)
         windows.append(
             WalkForwardWindow(
                 fold=fold,
@@ -104,6 +108,7 @@ def walk_forward(
                 test_end=timeline[test_hi - 1],
                 params=params,
                 report=report,
+                equity=oos_equity,
             )
         )
         fold += 1
@@ -111,8 +116,8 @@ def walk_forward(
     return windows
 
 
-def stitch_oos_equity(windows: list[WalkForwardWindow]) -> pd.DataFrame:
-    """Summarize per-fold OOS results into a comparison table."""
+def oos_summary(windows: list[WalkForwardWindow]) -> pd.DataFrame:
+    """Summarize per-fold OOS results into a one-row-per-fold comparison table."""
     rows = []
     for w in windows:
         rows.append(
@@ -125,3 +130,29 @@ def stitch_oos_equity(windows: list[WalkForwardWindow]) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def stitch_oos_equity(windows: list[WalkForwardWindow]) -> pd.Series:
+    """Chain per-fold OOS equity curves into one continuous out-of-sample curve.
+
+    Each fold's curve is rebased (it starts from its own post-warm-up capital),
+    so they are stitched by compounding returns: fold *k*'s return stream is
+    applied on top of where fold *k-1* left off. The result is the single OOS
+    equity path the module docstring promises — the curve worth trusting.
+    """
+    pieces: list[pd.Series] = []
+    level: float | None = None
+    for w in windows:
+        eq = w.equity
+        if eq.empty:
+            continue
+        if level is None:
+            curve = eq.copy()
+        else:
+            rets = eq.pct_change().fillna(0.0)
+            curve = level * (1.0 + rets).cumprod()
+        pieces.append(curve)
+        level = float(curve.iloc[-1])
+    if not pieces:
+        return pd.Series(dtype=float)
+    return pd.concat(pieces)

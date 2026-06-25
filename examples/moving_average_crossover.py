@@ -27,7 +27,7 @@ from axiom import (
     bootstrap_sharpe,
     walk_forward,
 )
-from axiom.validation import stitch_oos_equity
+from axiom.validation import oos_summary
 
 
 def synthetic_prices(n: int = 1500, seed: int = 7) -> dict:
@@ -85,7 +85,7 @@ def walk_forward_validation(frames: dict) -> None:
         test_size=63,
         base_params={"fast": 20, "slow": 50},
     )
-    table = stitch_oos_equity(windows)
+    table = oos_summary(windows)
     print("\n=== Walk-forward out-of-sample folds ===")
     cols = ["fold", "test_start", "test_end", "total_return", "sharpe", "max_drawdown"]
     print(table[cols].to_string(index=False))

@@ -29,6 +29,9 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.8",
 ]
+data = [
+    "yfinance>=0.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/a0merr/axiom-backtest"

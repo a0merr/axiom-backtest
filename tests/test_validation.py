@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from axiom import MovingAverageCrossover, walk_forward
-from axiom.validation import stitch_oos_equity
+from axiom.validation import oos_summary, stitch_oos_equity
 
 
 def _frames(n=900):
@@ -34,16 +34,30 @@ def test_walk_forward_produces_expected_folds():
         assert b.test_start > a.test_start
 
 
-def test_stitch_table_has_one_row_per_fold():
+def test_summary_table_has_one_row_per_fold():
     windows = walk_forward(
         _frames(),
         _factory,
         n_splits=3,
         base_params={"fast": 10, "slow": 30},
     )
-    table = stitch_oos_equity(windows)
+    table = oos_summary(windows)
     assert len(table) == len(windows)
     assert {"fold", "sharpe", "max_drawdown", "params"} <= set(table.columns)
+
+
+def test_stitch_concatenates_oos_curves_continuously():
+    windows = walk_forward(
+        _frames(),
+        _factory,
+        n_splits=3,
+        base_params={"fast": 10, "slow": 30},
+    )
+    curve = stitch_oos_equity(windows)
+    # One continuous series spanning every fold's OOS bars, in order.
+    assert isinstance(curve, pd.Series)
+    assert len(curve) == sum(len(w.equity) for w in windows)
+    assert curve.index.is_monotonic_increasing
 
 
 def test_optimizer_can_change_params_per_fold():
