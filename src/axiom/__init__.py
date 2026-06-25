@@ -49,7 +49,12 @@ from .sizing import (
     VolatilityTargetSizer,
 )
 from .strategy import MovingAverageCrossover, Strategy
-from .validation import WalkForwardWindow, stitch_oos_equity, walk_forward
+from .validation import (
+    WalkForwardWindow,
+    oos_summary,
+    stitch_oos_equity,
+    walk_forward,
+)
 
 __version__ = "0.1.0"
 
@@ -88,6 +93,7 @@ __all__ = [
     "MovingAverageCrossover",
     "Strategy",
     "WalkForwardWindow",
+    "oos_summary",
     "stitch_oos_equity",
     "walk_forward",
     "__version__",

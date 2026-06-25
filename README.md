@@ -94,7 +94,7 @@ python examples/moving_average_crossover.py
 
 ```python
 from axiom import walk_forward, MovingAverageCrossover
-from axiom.validation import stitch_oos_equity
+from axiom.validation import oos_summary, stitch_oos_equity
 
 def factory(data, params):
     return MovingAverageCrossover(data, fast=params["fast"], slow=params["slow"])
@@ -105,7 +105,8 @@ windows = walk_forward(
     base_params={"fast": 20, "slow": 50},
     # optimizer=my_param_search,   # re-fit on each in-sample block
 )
-print(stitch_oos_equity(windows))
+print(oos_summary(windows))           # per-fold OOS metrics table
+print(stitch_oos_equity(windows))     # one continuous out-of-sample equity curve
 ```
 
 Pass an `optimizer` to re-fit parameters on each in-sample block. The gap
@@ -150,13 +151,20 @@ direction, no-look-ahead invariants, and walk-forward fold construction.
 
 ## Case study
 
-[**docs/CASE_STUDY.md**](docs/CASE_STUDY.md) walks a full evaluation of the SMA
-crossover end to end — costs → walk-forward → bootstrap significance — and reads
-the result honestly, including the **where it breaks** part: most OOS folds
-never trade, the active folds disagree (mean OOS Sharpe −0.37, std 2.05), and
-the Sharpe 95% CI [−1.53, 0.28] crosses zero, so there is no statistically real
-edge. It uses synthetic data as a methodology template; the same three checks
-apply unchanged once you plug in a real strategy and dataset.
+[**docs/CASE_STUDY.md**](docs/CASE_STUDY.md) evaluates a 50/200 trend strategy
+across five real ETFs (SPY/QQQ/EFA/TLT/GLD, 2010-2024) with the full stack —
+next-bar fills, volume-impact slippage, correlation-aware sizing, walk-forward,
+and bootstrap significance — benchmarked against buy-and-hold SPY.
+
+The honest result: the strategy's Sharpe is **statistically significant** (0.78,
+95% CI [0.30, 1.27], p≈0.000) and **OOS-robust** (mean OOS Sharpe 0.81 over 10
+folds, no in-sample collapse) — yet it **still loses to simply holding SPY**
+(0.84 Sharpe, shallower drawdown) after paying \$24.7k in slippage. Real money,
+real significance, and *still not worth running*: beta dressed up as alpha. Being
+able to prove that distinction is the point.
+
+Reproduce with `pip install -e ".[data]"`, then `python examples/fetch_data.py`
+and `python examples/etf_case_study.py`.
 
 ## Roadmap
 
@@ -164,7 +172,7 @@ apply unchanged once you plug in a real strategy and dataset.
 - [x] Volume/volatility-aware slippage model
 - [x] Multi-asset portfolio with correlation-aware sizing
 - [x] Borrow costs and financing for shorts
-- [x] Strategy case-study writeup ([docs/CASE_STUDY.md](docs/CASE_STUDY.md); synthetic demo — real-data version pending)
+- [x] Strategy case-study writeup on real data ([docs/CASE_STUDY.md](docs/CASE_STUDY.md))
 - [x] Bootstrapped/Monte-Carlo confidence intervals on Sharpe
 
 ## License

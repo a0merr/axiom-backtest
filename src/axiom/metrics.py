@@ -170,7 +170,8 @@ def cagr(equity: pd.Series, periods_per_year: int = 252) -> float:
     if len(equity) < 2 or equity.iloc[0] <= 0:
         return 0.0
     total_growth = equity.iloc[-1] / equity.iloc[0]
-    years = len(equity) / periods_per_year
+    # N points span N-1 return periods; using N would overstate elapsed time.
+    years = (len(equity) - 1) / periods_per_year
     if years <= 0 or total_growth <= 0:
         return 0.0
     return float(total_growth ** (1 / years) - 1)
@@ -188,7 +189,13 @@ def analyze(
     )
     vol = float(rets.std(ddof=1) * np.sqrt(periods_per_year)) if not rets.empty else 0.0
     hit = float((rets > 0).mean()) if not rets.empty else 0.0
-    calmar = annualized / abs(mdd) if mdd < 0 else 0.0
+    # No drawdown with a positive return is an unbounded Calmar, not zero.
+    if mdd < 0:
+        calmar = annualized / abs(mdd)
+    elif annualized > 0:
+        calmar = float("inf")
+    else:
+        calmar = 0.0
 
     return PerformanceReport(
         total_return=total_return,
