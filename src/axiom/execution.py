@@ -14,32 +14,130 @@ often can look brilliant gross and be ruinous net.
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from .data import DataHandler
 from .event import Direction, FillEvent, OrderEvent
 
+if TYPE_CHECKING:
+    import pandas as pd
+
+
+def _apply(reference_price: float, direction: Direction, frac: float) -> float:
+    """Move price against the trader by ``frac`` of the reference price."""
+    if direction == Direction.LONG:
+        return reference_price * (1 + frac)
+    if direction == Direction.SHORT:
+        return reference_price * (1 - frac)
+    return reference_price
+
 
 class SlippageModel(ABC):
     @abstractmethod
-    def fill_price(self, reference_price: float, direction: Direction) -> float:
-        ...
+    def fill_price(
+        self,
+        reference_price: float,
+        direction: Direction,
+        quantity: float = 0.0,
+        bar: pd.Series | None = None,
+    ) -> float:
+        """Return the realized fill price.
+
+        ``quantity`` and ``bar`` (the current OHLCV row, may carry ``volume``)
+        are passed so impact models can scale slippage with order size and
+        market conditions. Simple models ignore them.
+        """
 
 
 class PercentageSlippage(SlippageModel):
-    """Fill moves against you by ``rate`` of the reference price."""
+    """Fill moves against you by a fixed ``rate`` of the reference price."""
 
     def __init__(self, rate: float = 0.0005):
         if rate < 0:
             raise ValueError("slippage rate must be non-negative")
         self.rate = rate
 
-    def fill_price(self, reference_price: float, direction: Direction) -> float:
-        if direction == Direction.LONG:
-            return reference_price * (1 + self.rate)
-        if direction == Direction.SHORT:
-            return reference_price * (1 - self.rate)
-        return reference_price
+    def fill_price(
+        self,
+        reference_price: float,
+        direction: Direction,
+        quantity: float = 0.0,
+        bar: pd.Series | None = None,
+    ) -> float:
+        return _apply(reference_price, direction, self.rate)
+
+
+class VolumeShareSlippage(SlippageModel):
+    """Square-root market-impact model (Almgren-style).
+
+    Slippage fraction = ``base_rate`` + ``impact_coef * sqrt(participation)``,
+    where ``participation = |quantity| / bar_volume``. Bigger orders relative to
+    traded volume pay disproportionately more — the realistic penalty that flat
+    per-trade slippage misses and that flatters high-turnover strategies. Falls
+    back to ``base_rate`` when the bar has no volume.
+    """
+
+    def __init__(
+        self,
+        base_rate: float = 0.0002,
+        impact_coef: float = 0.1,
+        volume_field: str = "volume",
+    ):
+        if base_rate < 0 or impact_coef < 0:
+            raise ValueError("base_rate and impact_coef must be non-negative")
+        self.base_rate = base_rate
+        self.impact_coef = impact_coef
+        self.volume_field = volume_field
+
+    def fill_price(
+        self,
+        reference_price: float,
+        direction: Direction,
+        quantity: float = 0.0,
+        bar: pd.Series | None = None,
+    ) -> float:
+        frac = self.base_rate
+        if bar is not None and self.volume_field in bar.index:
+            volume = float(bar[self.volume_field])
+            if volume > 0:
+                participation = abs(quantity) / volume
+                frac += self.impact_coef * math.sqrt(participation)
+        return _apply(reference_price, direction, frac)
+
+
+class VolatilitySlippage(SlippageModel):
+    """Slippage that scales with a precomputed per-bar volatility column.
+
+    Fraction = ``floor + k * volatility``, where ``volatility`` is read from the
+    bar (e.g. an ATR-as-fraction-of-price feature you attach to the data). Wider
+    spreads in turbulent regimes cost more. Falls back to ``floor`` if absent.
+    """
+
+    def __init__(
+        self,
+        k: float = 0.5,
+        floor: float = 0.0001,
+        vol_field: str = "volatility",
+    ):
+        if k < 0 or floor < 0:
+            raise ValueError("k and floor must be non-negative")
+        self.k = k
+        self.floor = floor
+        self.vol_field = vol_field
+
+    def fill_price(
+        self,
+        reference_price: float,
+        direction: Direction,
+        quantity: float = 0.0,
+        bar: pd.Series | None = None,
+    ) -> float:
+        frac = self.floor
+        if bar is not None and self.vol_field in bar.index:
+            frac += self.k * float(bar[self.vol_field])
+        return _apply(reference_price, direction, frac)
 
 
 class CommissionModel(ABC):
@@ -91,7 +189,10 @@ class ExecutionHandler(ABC):
     def _build_fill(
         self, order: OrderEvent, reference_price: float
     ) -> FillEvent:
-        fill_price = self.slippage.fill_price(reference_price, order.direction)
+        bar = self.data.latest_bar(order.symbol)
+        fill_price = self.slippage.fill_price(
+            reference_price, order.direction, order.quantity, bar
+        )
         slippage_cost = abs(fill_price - reference_price) * order.quantity
         commission = self.commission_model.commission(order.quantity, fill_price)
         return FillEvent(

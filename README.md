@@ -38,7 +38,7 @@ swapping two components, not rewriting the strategy.
 | Concern | How |
 | --- | --- |
 | **Transaction costs** | Per-share commission with a per-order minimum (`PerShareCommission`). |
-| **Slippage** | Price moves against you on every fill (`PercentageSlippage`); pluggable for volume/vol-aware models. |
+| **Slippage** | Three models: fixed (`PercentageSlippage`), size-aware square-root impact (`VolumeShareSlippage`), and regime-aware (`VolatilitySlippage`). Bigger orders relative to volume pay disproportionately more. |
 | **Look-ahead bias** | Data handler exposes only `asof`-resolved bars. `NextBarExecutionHandler` fills a signal from bar *t* at bar *t+1*'s open — you can't trade on a price you used to decide. |
 | **Execution timing** | Two models: `SimulatedExecutionHandler` (same-bar close, simple) and `NextBarExecutionHandler` (next-bar open, realistic). |
 | **Out-of-sample validation** | Rolling-origin `walk_forward` reports performance on concatenated OOS windows only. |
@@ -150,7 +150,7 @@ is the point of the project.
 ## Roadmap
 
 - [x] Next-bar-open execution handler (remove current-close optimism)
-- [ ] Volume/volatility-aware slippage model
+- [x] Volume/volatility-aware slippage model
 - [ ] Multi-asset portfolio with correlation-aware sizing
 - [ ] Borrow costs and financing for shorts
 - [ ] Strategy case-study writeup with real data
