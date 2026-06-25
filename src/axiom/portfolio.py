@@ -59,13 +59,15 @@ class Portfolio:
             return [OrderEvent(signal.symbol, signal.timestamp, direction, abs(pos.quantity))]
 
         if signal.direction == Direction.LONG and pos.quantity <= 0:
-            qty = self._size(price, signal.strength)
+            # Cover any existing short, then open the new long in one order.
+            qty = self._size(price, signal.strength) + abs(pos.quantity)
             if qty <= 0:
                 return []
             return [OrderEvent(signal.symbol, signal.timestamp, Direction.LONG, qty)]
 
         if signal.direction == Direction.SHORT and pos.quantity >= 0:
-            qty = self._size(price, signal.strength)
+            # Sell out any existing long, then open the new short in one order.
+            qty = self._size(price, signal.strength) + abs(pos.quantity)
             if qty <= 0:
                 return []
             return [OrderEvent(signal.symbol, signal.timestamp, Direction.SHORT, qty)]
@@ -89,15 +91,18 @@ class Portfolio:
         self._total_slippage += fill.slippage
 
         new_qty = pos.quantity + signed
-        if pos.quantity == 0 or (pos.quantity > 0) == (signed > 0):
-            # opening or adding in the same direction -> blend avg price
-            if new_qty != 0:
-                pos.avg_price = (
-                    pos.avg_price * pos.quantity + fill.fill_price * signed
-                ) / new_qty
-        elif new_qty == 0:
+        if new_qty == 0:
+            # fully closed
             pos.avg_price = 0.0
-        # reducing/closing leaves avg_price unchanged for the remainder
+        elif pos.quantity == 0 or (pos.quantity > 0) == (signed > 0):
+            # opening or adding in the same direction -> blend avg price
+            pos.avg_price = (
+                pos.avg_price * pos.quantity + fill.fill_price * signed
+            ) / new_qty
+        elif (pos.quantity > 0) != (new_qty > 0):
+            # crossed through zero (reversed side) -> new basis is the fill price
+            pos.avg_price = fill.fill_price
+        # else: reduced but same side -> keep existing avg_price
         pos.quantity = new_qty
 
     # -- mark to market ----------------------------------------------------
