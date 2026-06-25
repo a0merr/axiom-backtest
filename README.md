@@ -38,6 +38,7 @@ swapping two components, not rewriting the strategy.
 | Concern | How |
 | --- | --- |
 | **Transaction costs** | Per-share commission with a per-order minimum (`PerShareCommission`). |
+| **Short financing** | `Portfolio(annual_borrow_rate=…)` accrues per-bar borrow cost on short notional — shorting isn't free. |
 | **Slippage** | Three models: fixed (`PercentageSlippage`), size-aware square-root impact (`VolumeShareSlippage`), and regime-aware (`VolatilitySlippage`). Bigger orders relative to volume pay disproportionately more. |
 | **Look-ahead bias** | Data handler exposes only `asof`-resolved bars. `NextBarExecutionHandler` fills a signal from bar *t* at bar *t+1*'s open — you can't trade on a price you used to decide. |
 | **Execution timing** | Two models: `SimulatedExecutionHandler` (same-bar close, simple) and `NextBarExecutionHandler` (next-bar open, realistic). |
@@ -153,7 +154,7 @@ is the point of the project.
 - [x] Next-bar-open execution handler (remove current-close optimism)
 - [x] Volume/volatility-aware slippage model
 - [ ] Multi-asset portfolio with correlation-aware sizing
-- [ ] Borrow costs and financing for shorts
+- [x] Borrow costs and financing for shorts
 - [ ] Strategy case-study writeup with real data
 - [x] Bootstrapped/Monte-Carlo confidence intervals on Sharpe
 

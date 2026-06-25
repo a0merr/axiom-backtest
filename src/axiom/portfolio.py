@@ -33,12 +33,15 @@ class Portfolio:
     data: DataHandler
     initial_capital: float = 100_000.0
     risk_fraction: float = 0.1
+    annual_borrow_rate: float = 0.0  # financing on short notional, e.g. 0.03 = 3%/yr
+    periods_per_year: int = 252
 
     cash: float = field(init=False)
     positions: dict[str, _Position] = field(init=False)
     equity_curve: list[dict] = field(init=False)
     _total_commission: float = field(init=False, default=0.0)
     _total_slippage: float = field(init=False, default=0.0)
+    _total_financing: float = field(init=False, default=0.0)
 
     def __post_init__(self) -> None:
         self.cash = self.initial_capital
@@ -107,9 +110,25 @@ class Portfolio:
 
     # -- mark to market ----------------------------------------------------
     def on_market(self, event: MarketEvent) -> None:
+        self._accrue_borrow()
         self.equity_curve.append(
             {"timestamp": event.timestamp, "equity": self.equity()}
         )
+
+    def _accrue_borrow(self) -> None:
+        """Charge one period of financing on the notional of short positions."""
+        if self.annual_borrow_rate <= 0:
+            return
+        rate = self.annual_borrow_rate / self.periods_per_year
+        for symbol, pos in self.positions.items():
+            if pos.quantity >= 0:
+                continue
+            price = self.data.latest_price(symbol)
+            if price is None:
+                continue
+            cost = abs(pos.quantity) * price * rate
+            self.cash -= cost
+            self._total_financing += cost
 
     def market_value(self) -> float:
         total = 0.0
@@ -137,3 +156,7 @@ class Portfolio:
     @property
     def total_slippage(self) -> float:
         return self._total_slippage
+
+    @property
+    def total_financing(self) -> float:
+        return self._total_financing
