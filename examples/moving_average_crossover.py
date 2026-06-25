@@ -24,6 +24,7 @@ from axiom import (
     Portfolio,
     VolumeShareSlippage,
     analyze,
+    bootstrap_sharpe,
     walk_forward,
 )
 from axiom.validation import stitch_oos_equity
@@ -57,11 +58,19 @@ def single_backtest(frames: dict) -> None:
     )
     BacktestEngine(data, strategy, portfolio, execution).run()
 
-    report = analyze(portfolio.equity_series())
+    equity = portfolio.equity_series()
+    report = analyze(equity)
     print("=== Full-sample backtest (net of costs) ===")
     print(report)
     print(f"Commission paid : ${portfolio.total_commission:,.2f}")
     print(f"Slippage paid   : ${portfolio.total_slippage:,.2f}")
+
+    ci = bootstrap_sharpe(equity.pct_change().dropna(), n_boot=2000, seed=0)
+    verdict = "significant" if ci.significant else "NOT significant (CI includes 0)"
+    print(
+        f"Sharpe 95% CI : [{ci.lower:.2f}, {ci.upper:.2f}] "
+        f"(point {ci.point:.2f}, p={ci.p_value:.2f}) -> {verdict}"
+    )
 
 
 def walk_forward_validation(frames: dict) -> None:

@@ -77,6 +77,95 @@ def sortino_ratio(
     return float(np.sqrt(periods_per_year) * excess.mean() / downside.std(ddof=1))
 
 
+@dataclass
+class BootstrapResult:
+    """Sampling distribution summary for an annualized Sharpe ratio."""
+
+    point: float
+    lower: float
+    upper: float
+    p_value: float  # one-sided P(Sharpe <= 0) under the resampling distribution
+    confidence: float
+    n_boot: int
+    block_size: int
+
+    @property
+    def significant(self) -> bool:
+        """True if the confidence interval excludes zero."""
+        return self.lower > 0 or self.upper < 0
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+def _sharpe_array(r: np.ndarray, rf_per_period: float, ppy: int) -> float:
+    if r.size < 2:
+        return 0.0
+    sd = r.std(ddof=1)
+    if sd == 0:
+        return 0.0
+    return float(np.sqrt(ppy) * (r.mean() - rf_per_period) / sd)
+
+
+def bootstrap_sharpe(
+    returns: pd.Series,
+    *,
+    n_boot: int = 2000,
+    block_size: int | None = None,
+    confidence: float = 0.95,
+    risk_free: float = 0.0,
+    periods_per_year: int = 252,
+    seed: int = 0,
+) -> BootstrapResult:
+    """Circular block-bootstrap confidence interval for the Sharpe ratio.
+
+    A point Sharpe says nothing about whether the edge is real. This resamples
+    the return series in *blocks* (preserving short-run autocorrelation that an
+    i.i.d. bootstrap would destroy), recomputes the annualized Sharpe on each
+    resample, and reports a percentile interval plus a one-sided p-value for
+    "Sharpe ≤ 0". A high point Sharpe whose interval includes zero is not
+    evidence of skill — exactly the overfitting trap this library exists to
+    expose.
+
+    ``block_size`` defaults to the n^(1/3) rule of thumb. Determinism is via
+    ``seed`` so results are reproducible in CI.
+    """
+    r = np.asarray(returns.dropna(), dtype=float)
+    n = r.size
+    rf = risk_free / periods_per_year
+    point = _sharpe_array(r, rf, periods_per_year)
+    if n < 2:
+        return BootstrapResult(point, 0.0, 0.0, 1.0, confidence, n_boot, 0)
+
+    if block_size is None:
+        block_size = max(1, int(round(n ** (1 / 3))))
+    block_size = min(block_size, n)
+
+    rng = np.random.default_rng(seed)
+    n_blocks = int(np.ceil(n / block_size))
+    offsets = np.arange(block_size)
+    boots = np.empty(n_boot, dtype=float)
+    for i in range(n_boot):
+        starts = rng.integers(0, n, size=n_blocks)
+        # circular blocks: wrap indices past the end back to the start
+        idx = (starts[:, None] + offsets).ravel() % n
+        boots[i] = _sharpe_array(r[idx[:n]], rf, periods_per_year)
+
+    alpha = (1 - confidence) / 2
+    lower = float(np.quantile(boots, alpha))
+    upper = float(np.quantile(boots, 1 - alpha))
+    p_value = float(np.mean(boots <= 0))
+    return BootstrapResult(
+        point=point,
+        lower=lower,
+        upper=upper,
+        p_value=p_value,
+        confidence=confidence,
+        n_boot=n_boot,
+        block_size=block_size,
+    )
+
+
 def cagr(equity: pd.Series, periods_per_year: int = 252) -> float:
     if len(equity) < 2 or equity.iloc[0] <= 0:
         return 0.0
