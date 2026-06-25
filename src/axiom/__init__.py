@@ -32,7 +32,15 @@ from .execution import (
     VolatilitySlippage,
     VolumeShareSlippage,
 )
-from .metrics import PerformanceReport, analyze, max_drawdown, sharpe_ratio, sortino_ratio
+from .metrics import (
+    BootstrapResult,
+    PerformanceReport,
+    analyze,
+    bootstrap_sharpe,
+    max_drawdown,
+    sharpe_ratio,
+    sortino_ratio,
+)
 from .portfolio import Portfolio
 from .strategy import MovingAverageCrossover, Strategy
 from .validation import WalkForwardWindow, stitch_oos_equity, walk_forward
@@ -59,8 +67,10 @@ __all__ = [
     "SlippageModel",
     "VolatilitySlippage",
     "VolumeShareSlippage",
+    "BootstrapResult",
     "PerformanceReport",
     "analyze",
+    "bootstrap_sharpe",
     "max_drawdown",
     "sharpe_ratio",
     "sortino_ratio",

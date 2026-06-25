@@ -46,3 +46,36 @@ def test_analyze_report_fields():
     assert report.total_return == pytest.approx(0.30)
     assert 0.0 <= report.hit_rate <= 1.0
     assert report.n_periods == 251
+
+
+def test_bootstrap_strong_signal_is_significant():
+    rng = np.random.default_rng(1)
+    rets = pd.Series(rng.normal(0.001, 0.005, 1000))  # high, stable Sharpe
+    res = metrics.bootstrap_sharpe(rets, n_boot=500, seed=0)
+    assert res.lower > 0  # CI excludes zero
+    assert res.significant
+    assert res.p_value < 0.05
+
+
+def test_bootstrap_noise_straddles_zero():
+    rng = np.random.default_rng(2)
+    rets = pd.Series(rng.normal(0.0, 0.01, 1000))  # zero mean -> no edge
+    res = metrics.bootstrap_sharpe(rets, n_boot=500, seed=0)
+    assert res.lower < 0 < res.upper  # interval contains zero
+    assert not res.significant
+    assert 0.2 < res.p_value < 0.8
+
+
+def test_bootstrap_is_deterministic_with_seed():
+    rng = np.random.default_rng(3)
+    rets = pd.Series(rng.normal(0.0005, 0.01, 500))
+    a = metrics.bootstrap_sharpe(rets, n_boot=300, seed=42)
+    b = metrics.bootstrap_sharpe(rets, n_boot=300, seed=42)
+    assert (a.lower, a.upper, a.p_value) == (b.lower, b.upper, b.p_value)
+
+
+def test_bootstrap_default_block_size_rule():
+    rng = np.random.default_rng(4)
+    rets = pd.Series(rng.normal(0.0, 0.01, 1000))
+    res = metrics.bootstrap_sharpe(rets, n_boot=100, seed=0)
+    assert res.block_size == 10  # round(1000 ** (1/3)) == 10

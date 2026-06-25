@@ -43,6 +43,7 @@ swapping two components, not rewriting the strategy.
 | **Execution timing** | Two models: `SimulatedExecutionHandler` (same-bar close, simple) and `NextBarExecutionHandler` (next-bar open, realistic). |
 | **Out-of-sample validation** | Rolling-origin `walk_forward` reports performance on concatenated OOS windows only. |
 | **Risk metrics** | Sharpe, Sortino, max drawdown, Calmar, CAGR, hit rate — annualized with an explicit risk-free rate. |
+| **Statistical significance** | `bootstrap_sharpe` block-resamples returns for a Sharpe confidence interval + p-value. A high Sharpe whose CI includes zero is not evidence of edge. |
 
 Costs are surfaced separately (`portfolio.total_commission`,
 `portfolio.total_slippage`) so P&L attribution is auditable, not buried.
@@ -154,7 +155,7 @@ is the point of the project.
 - [ ] Multi-asset portfolio with correlation-aware sizing
 - [ ] Borrow costs and financing for shorts
 - [ ] Strategy case-study writeup with real data
-- [ ] Bootstrapped/Monte-Carlo confidence intervals on Sharpe
+- [x] Bootstrapped/Monte-Carlo confidence intervals on Sharpe
 
 ## License
 
