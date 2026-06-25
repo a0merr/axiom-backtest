@@ -6,6 +6,7 @@ from axiom import (
     BacktestEngine,
     Direction,
     HistoricCSVDataHandler,
+    MarketEvent,
     MovingAverageCrossover,
     PercentageSlippage,
     PerShareCommission,
@@ -57,6 +58,49 @@ def test_long_then_short_fully_reverses_position():
     assert pos.quantity < 0  # fully reversed to short, not partially covered
     assert pos.quantity == pytest.approx(-long_qty)  # 10% equity each side @ 100
     assert pos.avg_price == pytest.approx(100.0)  # basis reset to fill price
+
+
+def test_short_accrues_borrow_financing():
+    # Flat price @ 100, 5 bars. Short 100 shares, 5% annual borrow.
+    data = HistoricCSVDataHandler(_trend_frame(n=5, drift=0.0))
+    pf = Portfolio(
+        data,
+        initial_capital=100_000.0,
+        risk_fraction=0.1,
+        annual_borrow_rate=0.05,
+        periods_per_year=252,
+    )
+    ex = SimulatedExecutionHandler(
+        data, slippage=PercentageSlippage(0.0), commission=PerShareCommission(0, 0)
+    )
+    # Bar 0: open the short, then mark (one accrual).
+    data.update_bars()
+    for o in pf.on_signal(SignalEvent("AAA", None, Direction.SHORT)):
+        pf.on_fill(ex.execute_order(o))
+    qty = abs(pf.positions["AAA"].quantity)  # 100k*0.1/100 = 100 shares
+    pf.on_market(MarketEvent(timestamp=None))
+
+    # Remaining 4 bars: mark only, accruing financing each.
+    for _ in range(4):
+        data.update_bars()
+        pf.on_market(MarketEvent(timestamp=None))
+
+    per_bar = qty * 100.0 * 0.05 / 252
+    assert pf.total_financing == pytest.approx(per_bar * 5)
+    assert pf.total_financing > 0
+
+
+def test_no_financing_when_rate_zero():
+    data = HistoricCSVDataHandler(_trend_frame(n=5, drift=0.0))
+    pf = Portfolio(data, initial_capital=100_000.0)  # default rate 0
+    ex = SimulatedExecutionHandler(
+        data, slippage=PercentageSlippage(0.0), commission=PerShareCommission(0, 0)
+    )
+    data.update_bars()
+    for o in pf.on_signal(SignalEvent("AAA", None, Direction.SHORT)):
+        pf.on_fill(ex.execute_order(o))
+    pf.on_market(MarketEvent(timestamp=None))
+    assert pf.total_financing == 0.0
 
 
 def _run(frames, strategy_cls, **kw):
