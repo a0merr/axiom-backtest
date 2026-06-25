@@ -36,6 +36,29 @@ class _BuyAndHold(Strategy):
         return [SignalEvent("AAA", event.timestamp, Direction.LONG)]
 
 
+def test_long_then_short_fully_reverses_position():
+    # Signal LONG on bar 0, SHORT on bar 1; position must flip sign, not stack.
+    data = HistoricCSVDataHandler(_trend_frame(n=5, drift=0.0))  # flat @ 100
+    pf = Portfolio(data, initial_capital=100_000.0, risk_fraction=0.1)
+    ex = SimulatedExecutionHandler(
+        data, slippage=PercentageSlippage(0.0), commission=PerShareCommission(0, 0)
+    )
+
+    data.update_bars()
+    for o in pf.on_signal(SignalEvent("AAA", None, Direction.LONG)):
+        pf.on_fill(ex.execute_order(o))
+    assert pf.positions["AAA"].quantity > 0  # long
+    long_qty = pf.positions["AAA"].quantity
+
+    data.update_bars()
+    for o in pf.on_signal(SignalEvent("AAA", None, Direction.SHORT)):
+        pf.on_fill(ex.execute_order(o))
+    pos = pf.positions["AAA"]
+    assert pos.quantity < 0  # fully reversed to short, not partially covered
+    assert pos.quantity == pytest.approx(-long_qty)  # 10% equity each side @ 100
+    assert pos.avg_price == pytest.approx(100.0)  # basis reset to fill price
+
+
 def _run(frames, strategy_cls, **kw):
     data = HistoricCSVDataHandler(frames)
     strat = strategy_cls(data, **kw)
