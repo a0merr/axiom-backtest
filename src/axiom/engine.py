@@ -47,7 +47,13 @@ class BacktestEngine:
             # the strategy reacts (no-look-ahead for deferred execution).
             for fill in self.execution.on_bar(market):
                 self.portfolio.on_fill(fill)
-            self._events.append(market)
+            # The strategy is invoked directly rather than round-tripped through
+            # the queue: a MARKET event has exactly one consumer, so enqueueing
+            # it only to immediately dequeue and re-dispatch it buys nothing and
+            # costs a push, a pop and a branch on every single bar. Signals and
+            # everything downstream still flow through the queue, and the
+            # resulting order of operations is identical.
+            self._events.extend(self.strategy.on_market(market))
             self._drain()
             # Mark to market once the bar's events are fully processed.
             self.portfolio.on_market(market)

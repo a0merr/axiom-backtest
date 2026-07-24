@@ -10,7 +10,7 @@ Public API is intentionally small. Import the pieces you need:
 
 from __future__ import annotations
 
-from .data import DataHandler, HistoricCSVDataHandler
+from .data import Bar, DataHandler, HistoricCSVDataHandler
 from .engine import BacktestEngine
 from .event import (
     Direction,
@@ -25,6 +25,7 @@ from .execution import (
     CommissionModel,
     ExecutionHandler,
     NextBarExecutionHandler,
+    OrderBookSlippage,
     PercentageSlippage,
     PerShareCommission,
     SimulatedExecutionHandler,
@@ -59,6 +60,7 @@ from .validation import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "Bar",
     "DataHandler",
     "HistoricCSVDataHandler",
     "BacktestEngine",
@@ -72,6 +74,7 @@ __all__ = [
     "CommissionModel",
     "ExecutionHandler",
     "NextBarExecutionHandler",
+    "OrderBookSlippage",
     "PercentageSlippage",
     "PerShareCommission",
     "SimulatedExecutionHandler",
