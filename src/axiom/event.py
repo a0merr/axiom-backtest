@@ -58,13 +58,23 @@ class SignalEvent(Event):
 
 @dataclass
 class OrderEvent(Event):
-    """An order the portfolio wants executed."""
+    """An order the portfolio wants executed.
+
+    ``reference_price`` is the price the order was *sized* at. It is not the
+    price it will fill at and cannot be: with realistic (next-bar) execution the
+    fill price is unknowable at sizing time, which is precisely why sizing it
+    with the fill price would be look-ahead. Carrying the reference forward lets
+    the execution handler measure how far the market moved in between and, if
+    asked, refuse a fill that has run away — the backtest equivalent of sending
+    a marketable limit instead of a naked market order.
+    """
 
     symbol: str
     timestamp: datetime
     direction: Direction
     quantity: float  # always positive; ``direction`` carries the sign
     order_type: str = "MKT"
+    reference_price: float | None = None
     type: EventType = EventType.ORDER
 
     def __post_init__(self) -> None:
