@@ -44,14 +44,38 @@ class PerformanceReport:
 
 
 def returns_from_equity(equity: pd.Series) -> pd.Series:
+    """Per-period simple returns, truncated at ruin.
+
+    ``pct_change`` is only meaningful while equity is positive. Once an account
+    reaches zero the arithmetic silently inverts: recovering from -10 to -5 is
+    a *gain* of 5 that ``pct_change`` reports as -50%, and every metric built on
+    top inherits the lie. So the series is cut at the first non-positive point,
+    keeping the step *into* ruin (a loss of 100% or worse, which is real) and
+    discarding everything after it, which is not.
+
+    A portfolio with ``ruin_equity`` set never produces such a series in the
+    first place — it stops trading and holds flat. This guards the case where
+    an equity curve arrives from somewhere else.
+    """
+    dead = equity <= 0
+    if dead.any():
+        first = int(dead.argmax())
+        equity = equity.iloc[: first + 1]
     return equity.pct_change().dropna()
 
 
 def max_drawdown(equity: pd.Series) -> float:
-    """Largest peak-to-trough decline as a negative fraction."""
+    """Largest peak-to-trough decline as a negative fraction.
+
+    Values below -1.0 are possible and are not a bug: losing more than the peak
+    means the account ended in debt. They are reported rather than clipped,
+    because a -1.4 drawdown and a -1.0 drawdown are different events.
+    """
     if equity.empty:
         return 0.0
     running_max = equity.cummax()
+    if float(running_max.iloc[0]) <= 0:
+        return 0.0  # never had positive equity; the ratio is meaningless
     drawdown = equity / running_max - 1.0
     return float(drawdown.min())
 
