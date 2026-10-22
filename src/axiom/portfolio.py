@@ -29,6 +29,7 @@ import pandas as pd
 from .data import DataHandler
 from .event import Direction, FillEvent, MarketEvent, OrderEvent, SignalEvent
 from .sizing import FixedFractionalSizer, Sizer
+from .trades import TradeLog
 
 
 @dataclass
@@ -91,6 +92,10 @@ class Portfolio:
     # differ run to run. Insertion order is a function of the fills alone.
     _open: dict[str, None] = field(init=False)
     _short: dict[str, None] = field(init=False)
+    # Round trips, for answering *how* the equity curve was made.
+    trade_log: TradeLog = field(init=False)
+    _bar: int = field(init=False, default=0)
+    _traded_notional: float = field(init=False, default=0.0)
 
     def __post_init__(self) -> None:
         if self.max_gross_leverage is not None and self.max_gross_leverage <= 0:
@@ -104,6 +109,7 @@ class Portfolio:
         self._open = {}
         self._short = {}
         self._pending = {}
+        self.trade_log = TradeLog()
         if self.sizer is None:
             self.sizer = FixedFractionalSizer(self.risk_fraction)
 
@@ -205,6 +211,8 @@ class Portfolio:
         self.cash -= fill.commission
         self._total_commission += fill.commission
         self._total_slippage += fill.slippage
+        self._traded_notional += abs(notional)
+        self.trade_log.on_fill(fill, self._bar)
 
         new_qty = pos.quantity + signed
         if new_qty == 0:
@@ -234,6 +242,7 @@ class Portfolio:
     # -- mark to market ----------------------------------------------------
     def on_market(self, event: MarketEvent) -> None:
         self._pending.clear()  # unfilled orders lapse rather than tie up capital
+        self._bar += 1
         if not self._ruined:
             if self.sizer is not None:
                 self.sizer.observe(self.data)
@@ -261,6 +270,8 @@ class Portfolio:
         *date* the account died, not the last few basis points of it.
         """
         self.cash = self.equity()
+        marks = {s: self.data.latest_price(s) or self.positions[s].avg_price for s in self._open}
+        self.trade_log.liquidate(marks, timestamp, self._bar)
         for pos in self.positions.values():
             pos.quantity = 0.0
             pos.avg_price = 0.0
@@ -281,6 +292,7 @@ class Portfolio:
             cost = abs(self.positions[symbol].quantity) * price * rate
             self.cash -= cost
             self._total_financing += cost
+            self.trade_log.charge_financing(symbol, cost)
 
     def _accrue_margin_interest(self) -> None:
         """Charge one period of interest on a debit cash balance.
@@ -360,6 +372,30 @@ class Portfolio:
             {"timestamp": ts, "equity": eq}
             for ts, eq in zip(self.equity_series().index, self._curve_eq, strict=True)
         ]
+
+    def trades(self) -> pd.DataFrame:
+        """Round-trip log: one row per trade, open trades marked at the last price."""
+        marks = {}
+        for trade in self.trade_log.open_trades:
+            price = self.data.latest_price(trade.symbol)
+            if price is not None:
+                marks[trade.symbol] = price
+        return self.trade_log.to_frame(marks)
+
+    def turnover(self) -> float:
+        """Annualized turnover: traded notional per year as a multiple of mean equity.
+
+        2.0 means the book was bought and sold once over (a full round trip) per
+        year. High turnover is where cost assumptions do the most damage, so it
+        is the number to check before trusting a slippage model.
+        """
+        if len(self._curve_eq) < 2:
+            return 0.0
+        mean_equity = float(np.mean(np.asarray(self._curve_eq, dtype=float)))
+        if mean_equity <= 0:
+            return float("nan")
+        years = len(self._curve_eq) / self.periods_per_year
+        return self._traded_notional / mean_equity / years
 
     @property
     def total_commission(self) -> float:

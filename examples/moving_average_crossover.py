@@ -25,6 +25,7 @@ from axiom import (
     VolumeShareSlippage,
     analyze,
     bootstrap_sharpe,
+    trade_summary,
     walk_forward,
 )
 from axiom.validation import oos_summary
@@ -64,6 +65,14 @@ def single_backtest(frames: dict) -> None:
     print(report)
     print(f"Commission paid : ${portfolio.total_commission:,.2f}")
     print(f"Slippage paid   : ${portfolio.total_slippage:,.2f}")
+    print(f"Turnover        : {portfolio.turnover():.1f}x equity / year")
+
+    trades = portfolio.trades()
+    print("\n=== Round trips ===")
+    print(trade_summary(trades))
+    cols = ["side", "entry_time", "exit_time", "bars_held", "net_pnl", "return_pct"]
+    print("\nLast 5 trades:")
+    print(trades[cols].tail().to_string(index=False, float_format=lambda x: f"{x:,.3f}"))
 
     ci = bootstrap_sharpe(equity.pct_change().dropna(), n_boot=2000, seed=0)
     verdict = "significant" if ci.significant else "NOT significant (CI includes 0)"
