@@ -50,6 +50,7 @@ from .sizing import (
     VolatilityTargetSizer,
 )
 from .strategy import MovingAverageCrossover, Strategy
+from .trades import Trade, TradeLog, TradeSummary, trade_summary
 from .validation import (
     WalkForwardWindow,
     oos_summary,
@@ -95,6 +96,10 @@ __all__ = [
     "VolatilityTargetSizer",
     "MovingAverageCrossover",
     "Strategy",
+    "Trade",
+    "TradeLog",
+    "TradeSummary",
+    "trade_summary",
     "WalkForwardWindow",
     "oos_summary",
     "stitch_oos_equity",

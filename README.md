@@ -49,6 +49,7 @@ swapping two components, not rewriting the strategy.
 | **Out-of-sample validation** | Rolling-origin `walk_forward` reports performance on concatenated OOS windows only. |
 | **Risk metrics** | Sharpe, Sortino, max drawdown, Calmar, CAGR, hit rate — annualized with an explicit risk-free rate. |
 | **Throughput** | ~1M rows/sec on a single core, so a 10M-row sweep is seconds rather than half an hour — see [Performance](#performance). |
+| **Trade attribution** | `portfolio.trades()` logs every round trip — scale-ins, partial exits, and reversals split cost-correctly — and its net P&L reconciles to the equity curve to the cent. |
 | **Statistical significance** | `bootstrap_sharpe` block-resamples returns for a Sharpe confidence interval + p-value. A high Sharpe whose CI includes zero is not evidence of edge. |
 
 Costs are surfaced separately (`portfolio.total_commission`,
@@ -117,6 +118,40 @@ print(stitch_oos_equity(windows))     # one continuous out-of-sample equity curv
 Pass an `optimizer` to re-fit parameters on each in-sample block. The gap
 between in-sample and out-of-sample performance *is* the overfitting measurement
 — that gap is the headline number, not the full-sample Sharpe.
+
+## Trade log
+
+An equity curve says *whether* a strategy made money, not *how*. A 0.8 Sharpe
+from winning 70% of trades by a little and a 0.8 Sharpe from losing most trades
+and living off a few outliers are different strategies to run with real money.
+
+```python
+from axiom import trade_summary
+
+trades = portfolio.trades()        # one row per round trip
+print(trade_summary(trades))       # closed trades only
+print(f"turnover {portfolio.turnover():.1f}x equity / year")
+```
+
+```
+trades            17
+win rate          17.6%
+avg win / loss    3,876.04 / -2,346.24  (payoff 1.65)
+profit factor     0.35
+expectancy        -1,248.19 per trade
+avg bars held     40.1
+largest win/loss  5,789.74 / -4,455.46
+max losing streak 5
+```
+
+A trade opens when a symbol leaves flat and closes when it returns. A fill that
+crosses through zero closes one trade and opens the next, splitting its
+commission and slippage by quantity. Commission and short borrow are charged
+to the trade that incurred them, so the trades' net P&L sums to the change in
+equity minus margin interest (an account-level cost) — a test enforces that on
+a randomized long/short run with reversals. Open trades are marked at the last
+price but left out of `trade_summary`: an unrealized mark is not an outcome,
+and counting it would let a strategy raise its win rate by never closing losers.
 
 ## Market microstructure
 
@@ -265,6 +300,7 @@ src/axiom/
   data.py         # DataHandler: streams bars, no look-ahead, numpy-backed
   strategy.py     # Strategy base + MovingAverageCrossover reference
   portfolio.py    # order generation, cash/positions, equity, borrow costs
+  trades.py       # round-trip trade log + per-trade statistics
   sizing.py       # Sizer: fixed / vol-target / correlation-aware
   execution.py    # slippage + commission models, participation caps -> fills
   engine.py       # the event loop
@@ -325,7 +361,7 @@ and `python examples/etf_case_study.py`.
 - [x] Participation caps, partial fills, and worked orders
 - [x] Vectorized bar alignment (126x throughput, ~1M rows/sec)
 - [x] Ruin check, gross leverage cap, and margin interest on debit balances
-- [ ] Per-trade round-trip log (turnover, holding period, per-trade P&L)
+- [x] Per-trade round-trip log (turnover, holding period, per-trade P&L)
 - [ ] Staleness bound on carried-forward bars (halted/delisted symbols)
 - [ ] Survivorship-bias handling via a listing/delisting calendar
 - [ ] Limit and stop orders (`OrderEvent.order_type` is currently unused)
